@@ -105,6 +105,93 @@ describe('Parse ISO string', () => {
     expect(d.asWeeks()).toBe(12.261904761904763) // moment 12.285714285714286
     expect(d.asMonths()).toBe(2.8219178082191783) // moment 2.8213721020965523
   })
+  describe('Leading sign', () => {
+    const cases = [
+      ['P1Y', 'years', 1],
+      ['P1M', 'months', 1],
+      ['P1W', 'weeks', 1],
+      ['P1D', 'days', 1],
+      ['PT1H', 'hours', 1],
+      ['PT1M', 'minutes', 1],
+      ['PT1S', 'seconds', 1],
+      ['PT0.5S', 'seconds', 0.5],
+      ['PT0.001S', 'seconds', 0.001]
+    ]
+    cases.forEach(([input, unit, value]) => {
+      ['', '+', '-'].forEach((sign) => {
+        it(`parses ${sign}${input}`, () => {
+          const expectedValue = sign === '-' ? -value : value
+          const expected = dayjs.duration(expectedValue, unit)
+          const d = dayjs.duration(`${sign}${input}`)
+          expect(d.asMilliseconds()).toBe(expected.asMilliseconds())
+          expect(d.get(unit)).toBe(expectedValue)
+          expect(d.toISOString()).toBe(expected.toISOString())
+        })
+      })
+    })
+
+    it('negates every component of a compound duration', () => {
+      const d = dayjs.duration('-P1Y2M3W4DT5H6M7.5S')
+      const components = {
+        years: -1,
+        months: -2,
+        weeks: -3,
+        days: -4,
+        hours: -5,
+        minutes: -6,
+        seconds: -7.5
+      }
+      expect(d.asMilliseconds()).toBe(dayjs.duration(components).asMilliseconds())
+      Object.keys(components).filter(unit => unit !== 'weeks').forEach((unit) => {
+        expect(d.get(unit)).toBe(components[unit])
+      })
+      expect(d.toISOString()).toBe('-P1Y2M25DT5H6M7.5S')
+    })
+
+    it('combines the leading sign with component signs', () => {
+      const casesWithComponentSigns = [
+        ['P-1D', -1],
+        ['+P-1D', -1],
+        ['-P-1D', 1],
+        ['-P+1D', -1]
+      ]
+      casesWithComponentSigns.forEach(([input, days]) => {
+        const d = dayjs.duration(input)
+        expect(d.days()).toBe(days)
+        expect(d.asDays()).toBe(days)
+        expect(d.toISOString()).toBe(dayjs.duration(days, 'days').toISOString())
+      })
+      const mixed = dayjs.duration('-P1DT-2H')
+      expect(mixed.days()).toBe(-1)
+      expect(mixed.hours()).toBe(2)
+      expect(mixed.asHours()).toBe(-22)
+    })
+
+    it('preserves zero durations', () => {
+      ['P0D', '+P0D', '-P0D', '-PT0S'].forEach((input) => {
+        const d = dayjs.duration(input)
+        expect(d.asMilliseconds()).toBe(0)
+        expect(d.days()).toBe(0)
+        expect(d.toISOString()).toBe('P0D')
+      })
+    })
+
+    it('round-trips negative numeric durations through ISO strings', () => {
+      [-1, -500, -86400000, -93600500, -31536000000].forEach((milliseconds) => {
+        const iso = dayjs.duration(milliseconds).toISOString()
+        const parsed = dayjs.duration(iso)
+        expect(parsed.asMilliseconds()).toBe(milliseconds)
+        expect(parsed.toISOString()).toBe(iso)
+      })
+    })
+
+    it('uses negative parsed components when adding and subtracting dates', () => {
+      const date = dayjs('2020-10-20T12:00:00')
+      const d = dayjs.duration('-P1DT2H')
+      expect(date.add(d)).toEqual(date.subtract(1, 'day').subtract(2, 'hours'))
+      expect(date.subtract(d)).toEqual(date.add(1, 'day').add(2, 'hours'))
+    })
+  })
   it('Invalid ISO string', () => {
     expect(dayjs.duration('Invalid').toISOString()).toBe('P0D')
   })
